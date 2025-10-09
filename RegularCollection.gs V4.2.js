@@ -57,9 +57,10 @@ function createCalendarEventFromRow_(sh, row) {
   
   const createdEvent = Calendar.Events.insert(event, email);
 
-  setCell_(sh, row, 'カレンダーイベントID', createdEvent.id);
-  setCell_(sh, row, 'カレンダーID', email);
-  setLastUpdated_(sh, row, 'sheet');
+  setLastUpdated_(sh, row, 'sheet', {
+    'カレンダーイベントID': createdEvent.id,
+    'カレンダーID': email
+  });
 
   postChat_('カレンダー登録完了', title + '\nイベントID: ' + createdEvent.id + '\n' + getCell_(sh, row, '行URL'), 'regular');
   postChat_('カレンダー登録通知', buildRegisterNoticeMessage_(sh, row), 'regular');
@@ -113,9 +114,10 @@ function createSpotCalendarEvent_(sh, row, type) {
 
   const createdEvent = Calendar.Events.insert(event, email);
 
-  setCell_(sh, row, 'カレンダーイベントID', createdEvent.id);
-  setCell_(sh, row, 'カレンダーID', email);
-  setLastUpdated_(sh, row, 'sheet');
+  setLastUpdated_(sh, row, 'sheet', {
+    'カレンダーイベントID': createdEvent.id,
+    'カレンダーID': email
+  });
 
   const sheetType = (type === 'clinic') ? 'spot_clinic' : 'spot_dealer';
   postChat_('カレンダー登録完了', title + '\nイベントID: ' + createdEvent.id + '\n' + getCell_(sh, row, '行URL'), sheetType);
@@ -285,9 +287,10 @@ function transferEventByCopyAndDelete_(fromCalId, eventId, toCalId, sh, row) {
 
     Calendar.Events.remove(fromCalId, eventId);
     
-    setCell_(sh, row, 'カレンダーID', toCalId);
-    setCell_(sh, row, 'カレンダーイベントID', createdEvent.id);
-    setLastUpdated_(sh, row, 'calendar');
+    setLastUpdated_(sh, row, 'calendar', {
+      'カレンダーID': toCalId,
+      'カレンダーイベントID': createdEvent.id
+    });
 
   } catch (e) {
     const msg = (e && e.message) ? e.message : String(e);
@@ -566,9 +569,10 @@ function processAssigneeChangeFromCalendar_(sh, row, ev, currentCalId) {
     const normEventId = normalizeEventId_(ev.id);
     transferEventByCopyAndDelete_(currentCalId, normEventId, newCalId, sh, row);
     
-    setCell_(sh, row, '回収担当者', newAssigneeName);
-    setCell_(sh, row, 'ステータス', STATUS.ASSIGNEE_CHANGED_FROM_CAL);
-    setLastUpdated_(sh, row, 'calendar');
+    setLastUpdated_(sh, row, 'calendar', {
+      '回収担当者': newAssigneeName,
+      'ステータス': STATUS.ASSIGNEE_CHANGED_FROM_CAL
+    });
     
     postChat_('担当者変更完了（カレンダー操作）', 
       `カレンダーから担当者が変更されました\n` +
