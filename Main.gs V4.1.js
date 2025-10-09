@@ -191,6 +191,14 @@ function onEdit(e) {
     }
 
     const editedCol = e.range.getColumn();
+    const startCol = colByHeader_(sh, '開始時間');
+    const endCol = colByHeader_(sh, '終了時間');
+
+    if ((startCol && editedCol === startCol) || (endCol && editedCol === endCol)) {
+      handleTimeEdit_(e, sh, row, startCol, endCol, editedCol);
+      return;
+    }
+
     const assigneeCol = colByHeader_(sh, '回収担当者');
 
     if (assigneeCol && editedCol === assigneeCol) {
@@ -205,6 +213,85 @@ function onEdit(e) {
   } catch (err) { 
     console.error('onEdit error:', err); 
   }
+}
+
+function handleTimeEdit_(e, sh, row, startCol, endCol, editedCol) {
+  const rawValue = e && e.value !== undefined ? e.value : e.range.getValue();
+  const isStartEdit = startCol && editedCol === startCol;
+  const isEndEdit = endCol && editedCol === endCol;
+
+  if (!isStartEdit && !isEndEdit) return;
+
+  const parsed = parseTimeInput_(rawValue);
+  const updates = {};
+
+  if (isStartEdit) {
+    if (parsed) {
+      updates['開始時間'] = parsed;
+      updates['終了時間'] = addMinutesToTime_(parsed, 30);
+    } else {
+      updates['開始時間'] = '';
+      updates['終了時間'] = '';
+    }
+  } else if (isEndEdit) {
+    updates['終了時間'] = parsed || '';
+  }
+
+  if (Object.keys(updates).length === 0) return;
+
+  setRowValues_(sh, row, updates);
+
+  if (isStartEdit && startCol) {
+    sh.getRange(row, startCol).setNumberFormat('HH:mm');
+  }
+  if ((isStartEdit || isEndEdit) && endCol) {
+    sh.getRange(row, endCol).setNumberFormat('HH:mm');
+  }
+}
+
+function parseTimeInput_(value) {
+  if (value instanceof Date && !isNaN(value.getTime())) {
+    return new Date(value.getTime());
+  }
+
+  if (value === null || value === undefined) return null;
+
+  let str = toHalfWidth_(String(value)).trim();
+  if (str === '') return null;
+
+  str = str.replace(/[：]/g, ':');
+
+  if (/^\d{1,4}$/.test(str)) {
+    if (str.length <= 2) {
+      str = str.padStart(2, '0') + ':00';
+    } else {
+      str = str.padStart(4, '0');
+      str = str.slice(0, 2) + ':' + str.slice(2);
+    }
+  }
+
+  const parts = str.split(':');
+  if (parts.length < 2) return null;
+
+  const hours = parseInt(parts[0], 10);
+  const minutes = parseInt(parts[1], 10);
+  if (isNaN(hours) || isNaN(minutes)) return null;
+  if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return null;
+
+  return createTimeValue_(hours, minutes);
+}
+
+function addMinutesToTime_(time, minutes) {
+  if (!(time instanceof Date) || isNaN(time.getTime())) return null;
+  const result = new Date(time.getTime());
+  result.setMinutes(result.getMinutes() + minutes);
+  return result;
+}
+
+function createTimeValue_(hours, minutes) {
+  const base = new Date(1899, 11, 30, 0, 0, 0, 0);
+  base.setHours(hours, minutes, 0, 0);
+  return base;
 }
 
 /**
