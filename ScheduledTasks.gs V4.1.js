@@ -85,15 +85,17 @@ function processSheetTasks_(sh, sheetType) {
       } else if (status === STATUS.ASSIGNEE_CHANGE_REGISTER) {
         handleAssigneeChange_(sh, row);
         // ★★★ 修正箇所 ★★★
-        setCell_(sh, row, 'ステータス', STATUS.RESYNC_COMPLETE); // 完了後のステータスを「更新完了」に
-        setLastUpdated_(sh, row, 'sheet');
+        setLastUpdated_(sh, row, 'sheet', {
+          'ステータス': STATUS.RESYNC_COMPLETE
+        }); // 完了後のステータスを「更新完了」に
         console.log(`  ${row}行目: 担当者変更完了`);
         processedCount++;
       }
     } catch (err) {
       console.error(`  ${row}行目でエラー:`, err);
-      setCell_(sh, row, 'ステータス', STATUS.ERROR);
-      setLastUpdated_(sh, row, 'sheet');
+      setLastUpdated_(sh, row, 'sheet', {
+        'ステータス': STATUS.ERROR
+      });
       const errorMsg = buildErrorNotification_(sh, row, status, err.message);
       postChat_('エラー', errorMsg, sheetType);
       processedCount++;
@@ -116,8 +118,9 @@ function processRegisterTask_(sh, row, sheetType) {
     createSpotCalendarEvent_(sh, row, sheetType.replace('spot_', ''));
   }
   
-  setCell_(sh, row, 'ステータス', STATUS.CALENDAR_COMPLETE);
-  setLastUpdated_(sh, row, 'sheet');
+  setLastUpdated_(sh, row, 'sheet', {
+    'ステータス': STATUS.CALENDAR_COMPLETE
+  });
   console.log(`  ${row}行目: カレンダー登録完了`);
 }
 
@@ -136,8 +139,9 @@ function processUpdateTask_(sh, row, sheetType) {
     updateSpotCalendarEventTimes_(sh, row, eventId, sheetType.replace('spot_', ''));
   }
   
-  setCell_(sh, row, 'ステータス', STATUS.RESYNC_COMPLETE);
-  setLastUpdated_(sh, row, 'sheet');
+  setLastUpdated_(sh, row, 'sheet', {
+    'ステータス': STATUS.RESYNC_COMPLETE
+  });
   console.log(`  ${row}行目: 再同期完了`);
 }
 
@@ -154,11 +158,12 @@ function processCancelTask_(sh, row, sheetType) {
     console.log(`  ${row}行目: 既に削除済み（イベントID無し）`);
   }
   
-  setCell_(sh, row, 'カレンダーイベントID', '');
-  setCell_(sh, row, 'ステータス', STATUS.CANCEL_COMPLETE);
-  setCell_(sh, row, '削除日時', new Date());
-  setCell_(sh, row, '削除元', 'sheet');
-  setLastUpdated_(sh, row, 'sheet');
+  setLastUpdated_(sh, row, 'sheet', {
+    'カレンダーイベントID': '',
+    'ステータス': STATUS.CANCEL_COMPLETE,
+    '削除日時': new Date(),
+    '削除元': 'sheet'
+  });
   
   let title;
   if (sheetType === 'regular') {

@@ -230,8 +230,8 @@ function applyCustomerMasterToRegRow_(regSh, regRow, prebuiltIdx) {
   if (!hit) return;
   
   const rec = hit.record;
-  let changed = false;
-  
+  const updates = {};
+
   // 補完対象フィールドの処理
   CUSTOMER_FILL_HEADERS.forEach(h => {
     const cur = getCell_(regSh, regRow, h);
@@ -239,29 +239,28 @@ function applyCustomerMasterToRegRow_(regSh, regRow, prebuiltIdx) {
       if (h === '電話番号') {
         // 定期回収シートの場合のみ電話番号を補完
         if (sheetName === CONFIG.regSheetName) {
-          forceTelAsText_(regSh, regRow, '電話番号', rec[h]); 
+          updates['電話番号'] = formatTelForSheet_(rec[h]);
         }
       } else {
-        setCell_(regSh, regRow, h, rec[h]);
+        updates[h] = rec[h];
       }
-      changed = true;
     }
   });
-  
+
   // スポット回収シートの場合、医院電話番号を補完
-  if ((sheetName === SPOT_CONFIG.sheets.clinic || sheetName === SPOT_CONFIG.sheets.dealer) && 
+  if ((sheetName === SPOT_CONFIG.sheets.clinic || sheetName === SPOT_CONFIG.sheets.dealer) &&
       !getCell_(regSh, regRow, '医院電話番号') && rec['電話番号']) {
-    forceTelAsText_(regSh, regRow, '医院電話番号', rec['電話番号']);
-    changed = true;
+    updates['医院電話番号'] = formatTelForSheet_(rec['電話番号']);
   }
-  
+
   // メールアドレスの補完
   if (!getCell_(regSh, regRow, 'メールアドレス') && rec['メールアドレス']) {
-    setCell_(regSh, regRow, 'メールアドレス', rec['メールアドレス']);
-    changed = true;
+    updates['メールアドレス'] = rec['メールアドレス'];
   }
-  
-  if (changed) setLastUpdated_(regSh, regRow, 'sheet');
+
+  if (Object.keys(updates).length > 0) {
+    setLastUpdated_(regSh, regRow, 'sheet', updates);
+  }
 }
 
 /**

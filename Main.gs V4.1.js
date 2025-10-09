@@ -46,8 +46,9 @@ function menuRequestHold() {
   const row = sh.getActiveRange().getRow();
   if (row === 1) return SpreadsheetApp.getUi().alert('データ行を選択してください。');
 
-  setCell_(sh, row, 'ステータス', STATUS.HOLD);
-  setLastUpdated_(sh, row, 'sheet');
+  setLastUpdated_(sh, row, 'sheet', {
+    'ステータス': STATUS.HOLD
+  });
   SpreadsheetApp.getActive().toast('ステータスを「保留中」に変更しました。');
 }
 
@@ -61,11 +62,12 @@ function menuRequestRegister() {
 
   try {
     // --- 事前チェック ---
-    const d = getCell_(sh, row, '回収予定日');
-    const s = getCell_(sh, row, '開始時間');
-    const e = getCell_(sh, row, '終了時間');
-    const assignee = nz_(getCell_(sh, row, '回収担当者'));
-    const area = nz_(getCell_(sh, row, 'エリア'));
+    const requiredFields = getRowValuesByHeaders_(sh, row, ['回収予定日', '開始時間', '終了時間', '回収担当者', 'エリア']);
+    const d = requiredFields['回収予定日'];
+    const s = requiredFields['開始時間'];
+    const e = requiredFields['終了時間'];
+    const assignee = nz_(requiredFields['回収担当者']);
+    const area = nz_(requiredFields['エリア']);
 
     if (!d || !s || !e || !assignee || !area) {
       throw new Error('「回収予定日」「開始時間」「終了時間」「回収担当者」「エリア」は必須です。');
@@ -74,7 +76,8 @@ function menuRequestRegister() {
     if (sh.getName() === CONFIG.regSheetName && !validateAvailability_(sh, row, d, s, e)) {
       throw new Error('回収不可能日（休診日など）に設定されているため、登録できません。');
     }
-    const eventId = getCell_(sh, row, 'カレンダーイベントID');
+    const eventInfo = getRowValuesByHeaders_(sh, row, ['カレンダーイベントID']);
+    const eventId = eventInfo['カレンダーイベントID'];
     if (eventId) {
       throw new Error('既にカレンダーに登録済みです。内容を更新する場合は「最新の状態にする」を選択してください。');
     }
@@ -84,8 +87,9 @@ function menuRequestRegister() {
   }
   
   // ステータスを設定
-  setCell_(sh, row, 'ステータス', STATUS.CALENDAR_REGISTER);
-  setLastUpdated_(sh, row, 'sheet');
+  setLastUpdated_(sh, row, 'sheet', {
+    'ステータス': STATUS.CALENDAR_REGISTER
+  });
   SpreadsheetApp.getUi().alert('✅ 受付完了', 'カレンダーへの登録を予約しました。\n数分以内に自動で反映されます。', SpreadsheetApp.getUi().ButtonSet.OK);
 }
 
@@ -124,10 +128,11 @@ function menuRequestUpdate() {
   }
 
   // カレンダーに登録済みの場合は、更新待ちステータスにする
-  const eventId = getCell_(sh, row, 'カレンダーイベントID');
+  const eventId = getRowValuesByHeaders_(sh, row, ['カレンダーイベントID'])['カレンダーイベントID'];
   if (eventId) {
-    setCell_(sh, row, 'ステータス', STATUS.RESYNC_REGISTER);
-    setLastUpdated_(sh, row, 'sheet');
+    setLastUpdated_(sh, row, 'sheet', {
+      'ステータス': STATUS.RESYNC_REGISTER
+    });
     message += 'カレンダーの更新を予約しました。\n数分以内に自動で反映されます。';
   } else {
     message += 'カレンダーには未登録です。登録する場合は「カレンダーに登録する」を実行してください。';
@@ -145,20 +150,22 @@ function menuRequestCancel() {
   const row = sh.getActiveRange().getRow();
   if (row === 1) return SpreadsheetApp.getUi().alert('データ行を選択してください。');
 
-  const eventId = getCell_(sh, row, 'カレンダーイベントID');
+  const eventId = getRowValuesByHeaders_(sh, row, ['カレンダーイベントID'])['カレンダーイベントID'];
   if (!eventId) {
     // 既に削除済み、または未登録の場合
-    const currentStatus = getCell_(sh, row, 'ステータス');
+    const currentStatus = getRowValuesByHeaders_(sh, row, ['ステータス'])['ステータス'];
     if (currentStatus !== STATUS.CANCEL_COMPLETE) {
-      setCell_(sh, row, 'ステータス', STATUS.CANCEL_COMPLETE);
-      setLastUpdated_(sh, row, 'sheet');
+      setLastUpdated_(sh, row, 'sheet', {
+        'ステータス': STATUS.CANCEL_COMPLETE
+      });
     }
     SpreadsheetApp.getActive().toast('この予定はカレンダーに存在しないため、ステータスを「取消済み」にしました。');
     return;
   }
 
-  setCell_(sh, row, 'ステータス', STATUS.CANCEL_REGISTER);
-  setLastUpdated_(sh, row, 'sheet');
+  setLastUpdated_(sh, row, 'sheet', {
+    'ステータス': STATUS.CANCEL_REGISTER
+  });
   SpreadsheetApp.getUi().alert('✅ 受付完了', 'カレンダーからの削除を予約しました。\n数分以内に自動で反映されます。', SpreadsheetApp.getUi().ButtonSet.OK);
 }
 
@@ -189,8 +196,9 @@ function onEdit(e) {
     if (assigneeCol && editedCol === assigneeCol) {
       const eventId = getCell_(sh, row, 'カレンダーイベントID');
       if (eventId) {
-        setCell_(sh, row, 'ステータス', STATUS.ASSIGNEE_CHANGE_REGISTER);
-        setLastUpdated_(sh, row, 'sheet');
+        setLastUpdated_(sh, row, 'sheet', {
+          'ステータス': STATUS.ASSIGNEE_CHANGE_REGISTER
+        });
         SpreadsheetApp.getActive().toast('担当者を変更しました。カレンダーへは数分以内に自動で反映されます。', '情報', 10);
       }
     }
@@ -325,7 +333,7 @@ function processFormSubmission_(e, targetSheetName, formType) {
   
   // 行URL付与
   const rowUrl = `${ssReg.getUrl()}#gid=${shReg.getSheetId()}&range=${r}:${r}`;
-  setCell_(shReg, r, '行URL', rowUrl);
+  setRowValues_(shReg, r, { '行URL': rowUrl });
   
   // 受付通知
   let summary;

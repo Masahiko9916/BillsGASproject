@@ -178,28 +178,28 @@ function applyDealerMasterToRegRow_(regSh, regRow, prebuiltIdx) {
   if (!hit) return;
   
   const rec = hit.record;
-  let changed = false;
-  
+  const updates = {};
+
   // 補完対象フィールドの処理
   DEALER_FILL_HEADERS.forEach(h => {
     const cur = getCell_(regSh, regRow, h);
     if (!cur && rec.hasOwnProperty(h) && rec[h] !== '' && rec[h] != null) {
       if (h === 'ディーラー電話番号') {
-        forceTelAsText_(regSh, regRow, 'ディーラー電話番号', rec[h]); 
+        updates['ディーラー電話番号'] = formatTelForSheet_(rec[h]);
       } else {
-        setCell_(regSh, regRow, h, rec[h]);
+        updates[h] = rec[h];
       }
-      changed = true;
     }
   });
-  
+
   // メールアドレスの補完
   if (!getCell_(regSh, regRow, 'メールアドレス') && rec['メールアドレス']) {
-    setCell_(regSh, regRow, 'メールアドレス', rec['メールアドレス']);
-    changed = true;
+    updates['メールアドレス'] = rec['メールアドレス'];
   }
-  
-  if (changed) setLastUpdated_(regSh, regRow, 'sheet');
+
+  if (Object.keys(updates).length > 0) {
+    setLastUpdated_(regSh, regRow, 'sheet', updates);
+  }
 }
 
 /**

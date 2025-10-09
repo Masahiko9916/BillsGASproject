@@ -22,10 +22,59 @@
  * @param {GoogleAppsScript.Spreadsheet.Sheet} sh - 対象シート
  * @returns {Array} ヘッダー配列
  */
-function sheetHeaders_(sh) {
+const HEADER_INFO_CACHE_ = {};
+const ROW_VALUE_CACHE_ = {};
+
+function sheetKey_(sh) {
+  try {
+    const parent = sh.getParent();
+    const parentId = parent && typeof parent.getId === 'function' ? parent.getId() : '';
+    return parentId + '::' + sh.getSheetId();
+  } catch (e) {
+    return 'unknown::' + sh.getSheetId();
+  }
+}
+
+function getHeaderInfo_(sh) {
+  const key = sheetKey_(sh);
   const lastCol = sh.getLastColumn();
-  if (lastCol === 0) return [];
-  return sh.getRange(1,1,1,lastCol).getValues()[0];
+  const cached = HEADER_INFO_CACHE_[key];
+  if (cached && cached.lastCol === lastCol) {
+    return cached;
+  }
+
+  if (lastCol === 0) {
+    const emptyInfo = { headers: [], map: {}, lastCol: 0, signature: '' };
+    HEADER_INFO_CACHE_[key] = emptyInfo;
+    ROW_VALUE_CACHE_[key] = { signature: '', rows: {} };
+    return emptyInfo;
+  }
+
+  const headers = sh.getRange(1, 1, 1, lastCol).getValues()[0].map(h => String(h).trim());
+  const headerMap = {};
+  headers.forEach((h, idx) => {
+    if (h && headerMap[h] === undefined) {
+      headerMap[h] = idx;
+    }
+  });
+  const info = {
+    headers,
+    map: headerMap,
+    lastCol,
+    signature: headers.join('\u0000'),
+  };
+  HEADER_INFO_CACHE_[key] = info;
+
+  const rowCache = ROW_VALUE_CACHE_[key];
+  if (!rowCache || rowCache.signature !== info.signature) {
+    ROW_VALUE_CACHE_[key] = { signature: info.signature, rows: {} };
+  }
+
+  return info;
+}
+
+function sheetHeaders_(sh) {
+  return getHeaderInfo_(sh).headers;
 }
 
 /**
@@ -36,11 +85,9 @@ function sheetHeaders_(sh) {
  * @returns {number} 列インデックス（見つからない場合は-1）
  */
 function headerIndex_(sh, headerName) {
-  const headers = sheetHeaders_(sh);
-  for (let i=0; i<headers.length; i++){
-    if (String(headers[i]).trim() === headerName) return i;
-  }
-  return -1;
+  const headerInfo = getHeaderInfo_(sh);
+  const idx = headerInfo.map[headerName];
+  return idx === undefined ? -1 : idx;
 }
 
 /**
@@ -52,7 +99,53 @@ function headerIndex_(sh, headerName) {
  */
 function colByHeader_(sh, headerName) {
   const idx = headerIndex_(sh, headerName);
-  return idx >= 0 ? idx+1 : null;
+  return idx >= 0 ? idx + 1 : null;
+}
+
+function getRowCache_(sh, headerInfo) {
+  const key = sheetKey_(sh);
+  let cache = ROW_VALUE_CACHE_[key];
+  if (!cache || cache.signature !== headerInfo.signature) {
+    cache = { signature: headerInfo.signature, rows: {} };
+    ROW_VALUE_CACHE_[key] = cache;
+  }
+  return cache;
+}
+
+function getRowValuesFromCache_(sh, row, headerInfo) {
+  if (row <= 0) return null;
+  if (!headerInfo.lastCol) return null;
+  const cache = getRowCache_(sh, headerInfo);
+  let rowValues = cache.rows[row];
+  if (!rowValues) {
+    rowValues = sh.getRange(row, 1, 1, headerInfo.lastCol).getValues()[0];
+    cache.rows[row] = rowValues;
+  }
+  return rowValues;
+}
+
+function getRowValuesByHeaders_(sh, row, headerNames) {
+  const headerInfo = getHeaderInfo_(sh);
+  if (!headerNames || headerNames.length === 0) return {};
+  const rowValues = getRowValuesFromCache_(sh, row, headerInfo);
+  if (!rowValues) return {};
+
+  const result = {};
+  headerNames.forEach(name => {
+    const idx = headerInfo.map[name];
+    if (idx !== undefined) {
+      result[name] = rowValues[idx];
+    }
+  });
+  return result;
+}
+
+function updateRowCacheValue_(sh, row, headerInfo, colIdx, value) {
+  const cache = getRowCache_(sh, headerInfo);
+  const rowValues = cache.rows[row];
+  if (rowValues) {
+    rowValues[colIdx] = value;
+  }
 }
 
 /**
@@ -64,9 +157,13 @@ function colByHeader_(sh, headerName) {
  * @returns {any} セルの値（列が見つからない場合は空文字）
  */
 function getCell_(sh, row, headerName){
-  const col = colByHeader_(sh, headerName);
-  if (!col) return '';
-  return sh.getRange(row, col).getValue();
+  const headerInfo = getHeaderInfo_(sh);
+  const colIdx = headerInfo.map[headerName];
+  if (colIdx === undefined) return '';
+  const rowValues = getRowValuesFromCache_(sh, row, headerInfo);
+  if (!rowValues) return '';
+  const value = rowValues[colIdx];
+  return value === undefined ? '' : value;
 }
 
 /**
@@ -78,22 +175,57 @@ function getCell_(sh, row, headerName){
  * @param {any} val - 設定する値
  */
 function setCell_(sh, row, headerName, val){
-  const col = colByHeader_(sh, headerName);
-  if (!col) return;
-  sh.getRange(row, col).setValue(val);
+  if (!headerName) return;
+  const updates = {};
+  updates[headerName] = val;
+  setRowValues_(sh, row, updates);
+}
+
+function setRowValues_(sh, row, valueMap) {
+  if (!valueMap) return;
+  const headerInfo = getHeaderInfo_(sh);
+  if (!headerInfo.lastCol) return;
+
+  const targetHeaders = Object.keys(valueMap);
+  if (targetHeaders.length === 0) return;
+
+  const rowValues = getRowValuesFromCache_(sh, row, headerInfo) || new Array(headerInfo.lastCol).fill('');
+  let updated = false;
+  targetHeaders.forEach(name => {
+    const idx = headerInfo.map[name];
+    if (idx !== undefined) {
+      rowValues[idx] = valueMap[name];
+      updated = true;
+    }
+  });
+
+  if (!updated) return;
+
+  sh.getRange(row, 1, 1, headerInfo.lastCol).setValues([rowValues]);
+  const cache = getRowCache_(sh, headerInfo);
+  cache.rows[row] = rowValues;
 }
 
 /**
  * 最終更新情報を設定
- * 【説明】指定行の最終更新者・時刻・元を自動設定
+ * 【説明】指定行の最終更新者・時刻・元を自動設定し、必要に応じて追加列もまとめて更新
  * @param {GoogleAppsScript.Spreadsheet.Sheet} sh - 対象シート
  * @param {number} row - 行番号
  * @param {string} source - 更新元（'sheet', 'calendar', 'form'等）
+ * @param {Object=} extraValues - 併せて更新したい列のマップ（{ヘッダー名: 値}）
  */
-function setLastUpdated_(sh, row, source){
-  setCell_(sh, row, '最終更新者', getActiveEmail_());
-  setCell_(sh, row, '最終更新時刻', Utilities.formatDate(new Date(), CONFIG.tz, 'yyyy-MM-dd HH:mm:ss'));
-  if (source) setCell_(sh, row, '最終更新元', source);
+function setLastUpdated_(sh, row, source, extraValues){
+  const updates = Object.assign({}, extraValues || {});
+  if (updates['最終更新者'] === undefined) {
+    updates['最終更新者'] = getActiveEmail_();
+  }
+  if (updates['最終更新時刻'] === undefined) {
+    updates['最終更新時刻'] = Utilities.formatDate(new Date(), CONFIG.tz, 'yyyy-MM-dd HH:mm:ss');
+  }
+  if (source && updates['最終更新元'] === undefined) {
+    updates['最終更新元'] = source;
+  }
+  setRowValues_(sh, row, updates);
 }
 
 /**
@@ -175,11 +307,9 @@ function ensureAreaMasterSheet_() {
  * @param {any} raw - 元の値
  */
 function forceTelAsText_(sh, row, headerName, raw){
-  const col = colByHeader_(sh, headerName);
-  if (!col) return;
-  
-  const s = formatTelForSheet_(raw);
-  sh.getRange(row, col).setValue(s);
+  const updates = {};
+  updates[headerName] = formatTelForSheet_(raw);
+  setRowValues_(sh, row, updates);
 }
 
 /**
