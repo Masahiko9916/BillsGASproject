@@ -189,21 +189,46 @@ function setRowValues_(sh, row, valueMap) {
   const targetHeaders = Object.keys(valueMap);
   if (targetHeaders.length === 0) return;
 
-  const rowValues = getRowValuesFromCache_(sh, row, headerInfo) || new Array(headerInfo.lastCol).fill('');
-  let updated = false;
+  const cache = getRowCache_(sh, headerInfo);
+  let rowValues = getRowValuesFromCache_(sh, row, headerInfo);
+  if (!rowValues) {
+    // 既存値を一度だけ取得（閲覧権限があれば読み取りは可能）
+    rowValues = sh.getRange(row, 1, 1, headerInfo.lastCol).getValues()[0];
+    cache.rows[row] = rowValues;
+  }
+
+  const updates = [];
   targetHeaders.forEach(name => {
     const idx = headerInfo.map[name];
     if (idx !== undefined) {
-      rowValues[idx] = valueMap[name];
-      updated = true;
+      updates.push({ idx, value: valueMap[name] });
     }
   });
 
-  if (!updated) return;
+  if (updates.length === 0) return;
 
-  sh.getRange(row, 1, 1, headerInfo.lastCol).setValues([rowValues]);
-  const cache = getRowCache_(sh, headerInfo);
-  cache.rows[row] = rowValues;
+  updates.sort((a, b) => a.idx - b.idx);
+
+  let cursor = 0;
+  while (cursor < updates.length) {
+    let end = cursor + 1;
+    while (end < updates.length && updates[end].idx === updates[end - 1].idx + 1) {
+      end++;
+    }
+
+    const segment = updates.slice(cursor, end);
+    const startCol = segment[0].idx + 1;
+    const values = segment.map(item => item.value);
+    sh.getRange(row, startCol, 1, values.length).setValues([values]);
+
+    if (rowValues) {
+      segment.forEach((item, offset) => {
+        rowValues[item.idx] = values[offset];
+      });
+    }
+
+    cursor = end;
+  }
 }
 
 /**
